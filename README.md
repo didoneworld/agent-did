@@ -1,4 +1,4 @@
-# Agent ID Protocol
+# Agent DID 
 
 Open source vendor-agnostic agent identity and access management control plane based on OIDC and W3C DIDs.
 
