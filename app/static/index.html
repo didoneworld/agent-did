@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Agent ID Control Plane</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/static/app.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <aside class="sidebar">
+        <div>
+          <p class="eyebrow">Agent ID</p>
+          <h1>Control Plane</h1>
+          <p class="lede">Tenant-scoped registry, audit visibility, and lifecycle operations for Agent ID records.</p>
+        </div>
+        <div class="session-card">
+          <div class="session-row">
+            <span>Status</span>
+            <strong id="session-status">Not connected</strong>
+          </div>
+          <div class="session-row">
+            <span>API Key</span>
+            <code id="session-key">unset</code>
+          </div>
+          <button id="clear-session" class="ghost">Clear session</button>
+        </div>
+      </aside>
+
+      <main class="content">
+        <section class="hero">
+          <div>
+            <p class="eyebrow">Enterprise SaaS</p>
+            <h2>Admin Console</h2>
+          </div>
+          <div class="hero-actions">
+            <button id="refresh-all">Refresh data</button>
+          </div>
+        </section>
+
+        <section class="panel-grid">
+          <section class="panel">
+            <div class="panel-head">
+              <h3>Bootstrap Organization</h3>
+              <p>Create the first tenant and admin API key.</p>
+            </div>
+            <form id="bootstrap-form" class="stack">
+              <input name="organization_name" placeholder="Organization name" value="Didone World" />
+              <input name="organization_slug" placeholder="organization-slug" value="didoneworld" />
+              <input name="api_key_label" placeholder="API key label" value="ops-admin" />
+              <button type="submit">Bootstrap tenant</button>
+            </form>
+            <pre id="bootstrap-result" class="result"></pre>
+          </section>
+
+          <section class="panel">
+            <div class="panel-head">
+              <h3>Connect Session</h3>
+              <p>Paste an API key to unlock tenant data.</p>
+            </div>
+            <form id="session-form" class="stack">
+              <textarea name="api_key" rows="4" placeholder="aidp_..."></textarea>
+              <button type="submit">Save API key</button>
+            </form>
+            <pre id="session-result" class="result"></pre>
+          </section>
+        </section>
+
+        <section class="panel-grid wide">
+          <section class="panel">
+            <div class="panel-head">
+              <h3>Agent Records</h3>
+              <p>Current tenant registry state.</p>
+            </div>
+            <div id="records-empty" class="empty">No records loaded yet.</div>
+            <div id="records-list" class="record-list"></div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-head">
+              <h3>Create or Update Record</h3>
+              <p>Submit the raw Agent ID protocol payload.</p>
+            </div>
+            <form id="record-form" class="stack">
+              <textarea name="record_json" rows="18"></textarea>
+              <button type="submit">Upsert record</button>
+            </form>
+            <pre id="record-result" class="result"></pre>
+          </section>
+        </section>
+
+        <section class="panel-grid">
+          <section class="panel">
+            <div class="panel-head">
+              <h3>Tenant Snapshot</h3>
+              <p>Organizations and API key inventory.</p>
+            </div>
+            <div class="mini-grid">
+              <div>
+                <h4>Organizations</h4>
+                <div id="organizations-list" class="mini-list"></div>
+              </div>
+              <div>
+                <h4>API Keys</h4>
+                <div id="api-keys-list" class="mini-list"></div>
+              </div>
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-head">
+              <h3>Audit Events</h3>
+              <p>Lifecycle and registry actions.</p>
+            </div>
+            <div id="audit-list" class="audit-list"></div>
+          </section>
+        </section>
+      </main>
+    </div>
+    <script src="/static/app.js"></script>
+  </body>
+</html>

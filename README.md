@@ -27,6 +27,13 @@ This repository does not define agent messaging. It is intended to work alongsid
 
 The repository now includes a FastAPI-based SaaS control plane for managing Agent ID records per organization.
 
+The root route `/` now serves a built-in admin console for:
+- tenant bootstrap
+- API key session entry
+- agent record listing and raw JSON upsert
+- audit log viewing
+- deprovision actions
+
 Core endpoints:
 - `GET /health`
 - `POST /v1/bootstrap`
@@ -52,6 +59,12 @@ Run locally:
 python3 -m uvicorn app.main:app --reload
 ```
 
+Open the UI at:
+
+```bash
+http://127.0.0.1:8000/
+```
+
 Bootstrap the first organization:
 
 ```bash
@@ -69,7 +82,7 @@ docker build -t agent-id-protocol:local .
 docker run --rm -p 8000:8000 agent-id-protocol:local
 ```
 
-The image starts the FastAPI service. To run validation tests in the container instead:
+The image starts the FastAPI service and serves the admin console at `/`. To run validation tests in the container instead:
 
 ```bash
 docker run --rm agent-id-protocol:local /app/scripts/validate.sh

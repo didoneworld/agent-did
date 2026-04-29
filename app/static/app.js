@@ -1,0 +1,286 @@
+const defaultRecord = {
+  agent_id_protocol_version: "0.2.0",
+  agent: {
+    did: "did:web:agents.didone.world:catalog:planner",
+    display_name: "Planner Agent",
+    owner: "didoneworld",
+    role: "planner",
+    environment: "prod",
+    version: "v1",
+    status: "active",
+    trust_level: "internal",
+    capabilities: ["planning", "registry-write"]
+  },
+  authorization: {
+    mode: "delegated",
+    subject_context: "on_behalf_of_user",
+    delegation_proof_formats: ["oauth_token_exchange"],
+    scope_reference: "https://agents.didone.world/policies/planner",
+    expires_at: "2026-12-31T23:59:59Z",
+    max_delegation_depth: 1,
+    attenuation_required: true,
+    human_approval_required: false
+  },
+  governance: {
+    provisioning: "internal_iam",
+    audit_endpoint: "https://agents.didone.world/audit/planner",
+    status_endpoint: "https://agents.didone.world/status/planner",
+    deprovisioning_endpoint: "https://agents.didone.world/deprovision/planner",
+    identity_chain_preserved: true
+  },
+  bindings: {
+    a2a: {
+      endpoint_url: "https://agents.didone.world/a2a/planner",
+      agent_card_name: "PlannerAgent"
+    },
+    acp: {
+      endpoint_url: null
+    },
+    anp: {
+      did: null,
+      endpoint_url: null
+    }
+  },
+  extensions: {}
+};
+
+const state = {
+  apiKey: localStorage.getItem("aidp_api_key") || "",
+  records: [],
+  organizations: [],
+  apiKeys: [],
+  auditEvents: []
+};
+
+const els = {
+  sessionStatus: document.getElementById("session-status"),
+  sessionKey: document.getElementById("session-key"),
+  bootstrapForm: document.getElementById("bootstrap-form"),
+  bootstrapResult: document.getElementById("bootstrap-result"),
+  sessionForm: document.getElementById("session-form"),
+  sessionResult: document.getElementById("session-result"),
+  recordForm: document.getElementById("record-form"),
+  recordResult: document.getElementById("record-result"),
+  recordsList: document.getElementById("records-list"),
+  recordsEmpty: document.getElementById("records-empty"),
+  organizationsList: document.getElementById("organizations-list"),
+  apiKeysList: document.getElementById("api-keys-list"),
+  auditList: document.getElementById("audit-list"),
+  refreshAll: document.getElementById("refresh-all"),
+  clearSession: document.getElementById("clear-session")
+};
+
+els.recordForm.record_json.value = JSON.stringify(defaultRecord, null, 2);
+
+function setResult(node, value) {
+  node.textContent = typeof value === "string" ? value : JSON.stringify(value, null, 2);
+}
+
+function setApiKey(key) {
+  state.apiKey = key.trim();
+  if (state.apiKey) {
+    localStorage.setItem("aidp_api_key", state.apiKey);
+  } else {
+    localStorage.removeItem("aidp_api_key");
+  }
+  updateSession();
+}
+
+function updateSession() {
+  if (state.apiKey) {
+    els.sessionStatus.textContent = "Connected";
+    els.sessionKey.textContent = `${state.apiKey.slice(0, 14)}...${state.apiKey.slice(-4)}`;
+  } else {
+    els.sessionStatus.textContent = "Not connected";
+    els.sessionKey.textContent = "unset";
+  }
+}
+
+async function api(path, options = {}) {
+  const headers = new Headers(options.headers || {});
+  if (!headers.has("Content-Type") && options.body) {
+    headers.set("Content-Type", "application/json");
+  }
+  if (state.apiKey) {
+    headers.set("X-API-Key", state.apiKey);
+  }
+  const response = await fetch(path, { ...options, headers });
+  const contentType = response.headers.get("content-type") || "";
+  const payload = contentType.includes("application/json") ? await response.json() : await response.text();
+  if (!response.ok) {
+    throw new Error(typeof payload === "string" ? payload : payload.detail || JSON.stringify(payload));
+  }
+  return payload;
+}
+
+function renderOrganizations() {
+  els.organizationsList.innerHTML = "";
+  state.organizations.forEach((item) => {
+    const node = document.createElement("div");
+    node.className = "mini-card";
+    node.innerHTML = `<strong>${item.name}</strong><div class="audit-meta">${item.slug}</div>`;
+    els.organizationsList.appendChild(node);
+  });
+}
+
+function renderApiKeys() {
+  els.apiKeysList.innerHTML = "";
+  state.apiKeys.forEach((item) => {
+    const node = document.createElement("div");
+    node.className = "mini-card";
+    node.innerHTML = `<strong>${item.label}</strong><div class="audit-meta">${item.key_prefix}...${item.last_four}</div>`;
+    els.apiKeysList.appendChild(node);
+  });
+}
+
+function renderAudit() {
+  els.auditList.innerHTML = "";
+  state.auditEvents.forEach((item) => {
+    const node = document.createElement("div");
+    node.className = "audit-card";
+    node.innerHTML = `
+      <div class="audit-top">
+        <strong>${item.action}</strong>
+        <span class="pill">${new Date(item.created_at).toLocaleString()}</span>
+      </div>
+      <div class="audit-meta">${item.actor_label}</div>
+      <div class="audit-meta">${item.reason || ""}</div>
+    `;
+    els.auditList.appendChild(node);
+  });
+}
+
+function renderRecords() {
+  els.recordsList.innerHTML = "";
+  els.recordsEmpty.style.display = state.records.length ? "none" : "block";
+  state.records.forEach((item) => {
+    const node = document.createElement("div");
+    const statusClass = item.status === "active" ? "active" : "disabled";
+    node.className = "record-card";
+    node.innerHTML = `
+      <div class="record-top">
+        <div>
+          <p class="record-title">${item.display_name}</p>
+          <div class="audit-meta">${item.did}</div>
+        </div>
+        <span class="pill ${statusClass}">${item.status}</span>
+      </div>
+      <div class="record-meta">Environment: ${item.environment} · Protocol: ${item.protocol_version}</div>
+      <div class="record-actions">
+        <button data-action="load">Load JSON</button>
+        <button data-action="deprovision" class="ghost">Deprovision</button>
+      </div>
+    `;
+
+    node.querySelector('[data-action="load"]').addEventListener("click", () => {
+      els.recordForm.record_json.value = JSON.stringify(item.record, null, 2);
+      setResult(els.recordResult, item.record);
+    });
+
+    node.querySelector('[data-action="deprovision"]').addEventListener("click", async () => {
+      const reason = window.prompt("Reason for deprovisioning", "security review");
+      if (!reason) return;
+      try {
+        const payload = await api(`/v1/agent-records/${item.id}/deprovision`, {
+          method: "POST",
+          body: JSON.stringify({ reason })
+        });
+        setResult(els.recordResult, payload);
+        await refreshAuthedData();
+      } catch (error) {
+        setResult(els.recordResult, String(error));
+      }
+    });
+
+    els.recordsList.appendChild(node);
+  });
+}
+
+async function refreshAuthedData() {
+  if (!state.apiKey) return;
+  const [organizations, apiKeys, records, auditEvents] = await Promise.all([
+    api("/v1/organizations"),
+    api("/v1/api-keys"),
+    api("/v1/agent-records"),
+    api("/v1/audit-events")
+  ]);
+  state.organizations = organizations;
+  state.apiKeys = apiKeys;
+  state.records = records;
+  state.auditEvents = auditEvents;
+  renderOrganizations();
+  renderApiKeys();
+  renderRecords();
+  renderAudit();
+}
+
+els.bootstrapForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const form = new FormData(event.currentTarget);
+  const payload = Object.fromEntries(form.entries());
+  try {
+    const result = await api("/v1/bootstrap", {
+      method: "POST",
+      body: JSON.stringify(payload)
+    });
+    setResult(els.bootstrapResult, result);
+    setApiKey(result.api_key);
+    els.sessionForm.api_key.value = result.api_key;
+    await refreshAuthedData();
+  } catch (error) {
+    setResult(els.bootstrapResult, String(error));
+  }
+});
+
+els.sessionForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  setApiKey(els.sessionForm.api_key.value);
+  try {
+    await refreshAuthedData();
+    setResult(els.sessionResult, "Session connected.");
+  } catch (error) {
+    setResult(els.sessionResult, String(error));
+  }
+});
+
+els.recordForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  try {
+    const payload = JSON.parse(els.recordForm.record_json.value);
+    const result = await api("/v1/agent-records", {
+      method: "POST",
+      body: JSON.stringify(payload)
+    });
+    setResult(els.recordResult, result);
+    await refreshAuthedData();
+  } catch (error) {
+    setResult(els.recordResult, String(error));
+  }
+});
+
+els.refreshAll.addEventListener("click", async () => {
+  try {
+    await refreshAuthedData();
+  } catch (error) {
+    setResult(els.sessionResult, String(error));
+  }
+});
+
+els.clearSession.addEventListener("click", () => {
+  setApiKey("");
+  els.sessionForm.api_key.value = "";
+  state.records = [];
+  state.organizations = [];
+  state.apiKeys = [];
+  state.auditEvents = [];
+  renderOrganizations();
+  renderApiKeys();
+  renderRecords();
+  renderAudit();
+});
+
+updateSession();
+els.sessionForm.api_key.value = state.apiKey;
+if (state.apiKey) {
+  refreshAuthedData().catch((error) => setResult(els.sessionResult, String(error)));
+}

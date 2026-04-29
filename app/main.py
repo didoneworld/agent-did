@@ -3,6 +3,8 @@ from __future__ import annotations
 from typing import Annotated
 
 from fastapi import Depends, FastAPI, Header, HTTPException, status
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -50,6 +52,8 @@ def create_app(database_url: str | None = None) -> FastAPI:
     app.state.service = service
 
     Base.metadata.create_all(bind=engine)
+    static_dir = settings.root_dir / "app" / "static"
+    app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
     def require_auth(
         db: Annotated[Session, Depends(get_db)],
@@ -69,6 +73,10 @@ def create_app(database_url: str | None = None) -> FastAPI:
             version="0.2.0",
             database_url_scheme=settings.database_url.split(":", 1)[0],
         )
+
+    @app.get("/", include_in_schema=False)
+    def ui() -> FileResponse:
+        return FileResponse(static_dir / "index.html")
 
     @app.post("/v1/bootstrap", response_model=BootstrapResponse, status_code=201)
     def bootstrap(payload: OrganizationBootstrapRequest, db: Annotated[Session, Depends(get_db)]):
