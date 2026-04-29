@@ -1,72 +1,23 @@
 import json
+from datetime import datetime
 from pathlib import Path
+
+from jsonschema import Draft202012Validator
+import yaml
+
+
+def _normalize_json_compatible(value):
+    if isinstance(value, datetime):
+        return value.isoformat().replace("+00:00", "Z")
+    if isinstance(value, list):
+        return [_normalize_json_compatible(item) for item in value]
+    if isinstance(value, dict):
+        return {key: _normalize_json_compatible(item) for key, item in value.items()}
+    return value
 
 
 def _parse_simple_yaml(path: Path) -> dict:
-    data = {}
-    current_section = None
-    current_subsection = None
-    current_list_key = None
-    for raw_line in path.read_text().splitlines():
-        if not raw_line.strip() or raw_line.strip().startswith('#'):
-            continue
-        indent = len(raw_line) - len(raw_line.lstrip(' '))
-        line = raw_line.strip()
-        if indent == 0:
-            current_section = None
-            current_subsection = None
-            current_list_key = None
-            if line.endswith(':'):
-                key = line[:-1]
-                data[key] = {}
-                current_section = key
-            else:
-                key, value = line.split(': ', 1)
-                data[key] = value.strip('"')
-        elif indent == 2 and current_section:
-            current_subsection = None
-            current_list_key = None
-            if line.endswith(':'):
-                key = line[:-1]
-                data[current_section][key] = {}
-                current_subsection = key
-            else:
-                key, value = line.split(': ', 1)
-                if value == '{}':
-                    data[current_section][key] = {}
-                else:
-                    data[current_section][key] = value.strip('"')
-        elif indent == 4 and current_section and current_subsection:
-            current_list_key = None
-            if line.startswith('- '):
-                current_list_key = current_subsection
-                existing = data[current_section].get(current_subsection)
-                if isinstance(existing, dict):
-                    existing = []
-                    data[current_section][current_subsection] = existing
-                elif existing is None:
-                    existing = []
-                    data[current_section][current_subsection] = existing
-                existing.append(line[2:].strip('"'))
-            elif line.endswith(':'):
-                key = line[:-1]
-                data[current_section][current_subsection][key] = {}
-                current_list_key = key
-            else:
-                key, value = line.split(': ', 1)
-                target = data[current_section][current_subsection]
-                if isinstance(target, dict):
-                    target[key] = None if value == 'null' else value.strip('"')
-        elif indent == 6 and current_section and current_subsection:
-            if line.startswith('- '):
-                existing = data[current_section].setdefault(current_subsection, [])
-                existing.append(line[2:].strip('"'))
-            else:
-                key, value = line.split(': ', 1)
-                nested = data[current_section][current_subsection]
-                if isinstance(nested, dict):
-                    nested[key] = None if value == 'null' else value.strip('"')
-    return data
+    return _normalize_json_compatible(yaml.safe_load(path.read_text()))
 
 
 def test_json_schema_declares_expected_protocol_version():
@@ -87,6 +38,18 @@ def test_json_schema_encodes_delegation_guards():
         'multi_party',
     ]
     assert delegated_rule['governance']['properties']['identity_chain_preserved']['const'] is True
+
+
+def test_examples_validate_against_json_schema():
+    schema_path = Path(__file__).resolve().parents[1] / 'schemas/json/agent-id-record.schema.json'
+    schema = json.loads(schema_path.read_text())
+    validator = Draft202012Validator(schema)
+    example_paths = [
+        Path(__file__).resolve().parents[1] / 'examples/did-methods/did-web-agent.yaml',
+        Path(__file__).resolve().parents[1] / 'examples/did-methods/did-key-agent.yaml',
+    ]
+    for example_path in example_paths:
+        validator.validate(_parse_simple_yaml(example_path))
 
 
 def test_did_web_example_uses_did_web():

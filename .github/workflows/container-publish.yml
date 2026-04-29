@@ -21,10 +21,10 @@ jobs:
           python-version: "3.13"
 
       - name: Install test dependency
-        run: pip install pytest==9.0.3
+        run: pip install -r requirements.txt
 
       - name: Run validation tests
-        run: python -m pytest tests/test_examples.py
+        run: python -m pytest
 
   build:
     runs-on: ubuntu-latest
@@ -65,3 +65,7 @@ jobs:
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+
+      - name: Smoke test container
+        if: github.event_name == 'pull_request'
+        run: docker run --rm ghcr.io/didoneworld/agent-id-protocol:${{ github.sha }} /app/scripts/validate.sh

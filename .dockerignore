@@ -1,6 +1,7 @@
 .git
 .github
 .benchmarks
+data
 __pycache__
 *.pyc
 *.pyo

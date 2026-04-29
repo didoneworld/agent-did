@@ -5,10 +5,13 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-RUN pip install --no-cache-dir pytest==9.0.3
+COPY requirements.txt .
+
+RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
 RUN chmod +x /app/scripts/validate.sh
+RUN chmod +x /app/scripts/start.sh
 
-ENTRYPOINT ["/app/scripts/validate.sh"]
+ENTRYPOINT ["/app/scripts/start.sh"]

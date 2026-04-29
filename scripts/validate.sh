@@ -2,4 +2,4 @@
 set -eu
 
 cd /app
-python -m pytest tests/test_examples.py "$@"
+python -m pytest "$@"

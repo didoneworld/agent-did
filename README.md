@@ -23,16 +23,57 @@ This repository does not define agent messaging. It is intended to work alongsid
 - `examples/a2a-agent-card.json`: A2A binding example
 - `templates/publish-checklist.md`: publication checklist
 
-## Container Validation
+## SaaS Control Plane
 
-The repository includes a minimal validation image:
+The repository now includes a FastAPI-based SaaS control plane for managing Agent ID records per organization.
+
+Core endpoints:
+- `GET /health`
+- `POST /v1/bootstrap`
+- `GET /v1/organizations`
+- `GET /v1/api-keys`
+- `GET /v1/agent-records`
+- `POST /v1/agent-records`
+- `GET /v1/agent-records/{record_id}`
+- `GET /v1/agent-records/by-did/{did}`
+- `GET /v1/audit-events`
+- `POST /v1/agent-records/{record_id}/deprovision`
+
+Current product slice:
+- tenant bootstrap with a first admin API key
+- API key authentication via `X-API-Key`
+- database-backed Agent ID registry
+- audit logging for bootstrap, create/update, and deprovision actions
+- SQLite for local development and `DATABASE_URL` support for Postgres deployments
+
+Run locally:
+
+```bash
+python3 -m uvicorn app.main:app --reload
+```
+
+Bootstrap the first organization:
+
+```bash
+curl -X POST http://127.0.0.1:8000/v1/bootstrap \
+  -H 'content-type: application/json' \
+  -d '{"organization_name":"Didone World","organization_slug":"didoneworld","api_key_label":"ops-admin"}'
+```
+
+## Container
+
+The repository includes a runnable API image:
 
 ```bash
 docker build -t agent-id-protocol:local .
-docker run --rm agent-id-protocol:local
+docker run --rm -p 8000:8000 agent-id-protocol:local
 ```
 
-The image runs `scripts/validate.sh`, which executes the repository validation tests.
+The image starts the FastAPI service. To run validation tests in the container instead:
+
+```bash
+docker run --rm agent-id-protocol:local /app/scripts/validate.sh
+```
 
 ## Identity Foundation
 
