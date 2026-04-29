@@ -39,19 +39,35 @@ Core endpoints:
 - `GET /health`
 - `POST /v1/bootstrap`
 - `GET /v1/organizations`
+- `GET /v1/identity-providers`
+- `POST /v1/identity-providers/oidc`
+- `POST /v1/identity-providers/saml`
+- `GET /v1/sso/oidc/start/{organization_slug}`
+- `POST /v1/sso/oidc/callback/{organization_slug}`
+- `POST /v1/sso/saml/acs/{organization_slug}`
 - `GET /v1/api-keys`
+- `POST /v1/api-keys`
+- `POST /v1/api-keys/{api_key_id}/revoke`
 - `GET /v1/agent-records`
 - `POST /v1/agent-records`
 - `GET /v1/agent-records/{record_id}`
 - `GET /v1/agent-records/by-did/{did}`
 - `GET /v1/audit-events`
 - `POST /v1/agent-records/{record_id}/deprovision`
+- `GET /v1/fga/tuples`
+- `POST /v1/fga/tuples`
+- `POST /v1/fga/check`
 
 Current product slice:
 - tenant bootstrap with a first admin API key
 - API key authentication via `X-API-Key`
+- role-based API keys with `admin`, `writer`, and `reader` scopes
+- OIDC and SAML provider configuration with signed bearer sessions
+- fine-grained authorization tuples for record-level access control
 - database-backed Agent ID registry
 - audit logging for bootstrap, create/update, and deprovision actions
+- database schema revision tracking and in-place startup migrations
+- in-memory request rate limiting and request ID logging
 - SQLite for local development and `DATABASE_URL` support for Postgres deployments
 
 ## Published Images

@@ -1,27 +1,43 @@
 from __future__ import annotations
 
+from time import perf_counter
 from typing import Annotated
 
-from fastapi import Depends, FastAPI, Header, HTTPException, status
+from fastapi import Depends, FastAPI, Header, HTTPException, Request, status
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.database import Base, get_db, init_database
+from app.database import get_db, init_database
 from app.db_models import AgentRecord
+from app.migrations import migrate_database
+from app.runtime import InMemoryRateLimiter, build_request_context, log_request, rate_limit_response
 from app.schemas import (
     AgentRecordResponse,
+    AuthorizationCheckRequest,
+    AuthorizationCheckResponse,
+    AuthorizationTupleResponse,
+    AuthorizationTupleWrite,
     AgentRecordWrite,
+    ApiKeyCreateRequest,
+    ApiKeyCreateResponse,
+    ApiKeyRevokeResponse,
     ApiKeySummary,
     AuditEventResponse,
     BootstrapResponse,
     DeprovisionRequest,
+    IdentityProviderConfigRequest,
+    IdentityProviderConfigResponse,
+    OidcCallbackRequest,
+    OidcStartResponse,
     OrganizationBootstrapRequest,
     OrganizationResponse,
+    SamlAssertionRequest,
+    SessionAuthResponse,
     ServiceInfoResponse,
 )
-from app.services import BootstrapConflictError, ProtocolValidationError, SaaSService
+from app.services import AuthorizationError, BootstrapConflictError, ProtocolValidationError, SaaSService
 
 
 def _record_response(record: AgentRecord) -> AgentRecordResponse:
@@ -40,38 +56,90 @@ def _record_response(record: AgentRecord) -> AgentRecordResponse:
     )
 
 
-def create_app(database_url: str | None = None) -> FastAPI:
+def create_app(
+    database_url: str | None = None,
+    rate_limit_max_requests: int | None = None,
+    rate_limit_window_seconds: int | None = None,
+) -> FastAPI:
     engine = init_database(database_url)
+    schema_revision = migrate_database(engine)
     service = SaaSService(schema_path=settings.schema_path)
+    resolved_rate_limit_requests = rate_limit_max_requests or settings.api_rate_limit_requests
+    resolved_rate_limit_window = rate_limit_window_seconds or settings.api_rate_limit_window_seconds
 
     app = FastAPI(
-        title="Agent ID Protocol SaaS",
-        version="0.2.0",
+        title="Agent Identity SaaS",
+        version=settings.app_version,
         description="Enterprise-oriented control plane for tenant-scoped Agent ID records and lifecycle operations.",
     )
     app.state.service = service
-
-    Base.metadata.create_all(bind=engine)
+    app.state.schema_revision = schema_revision
+    app.state.rate_limiter = InMemoryRateLimiter(
+        max_requests=resolved_rate_limit_requests,
+        window_seconds=resolved_rate_limit_window,
+    )
+    app.state.rate_limit_requests = resolved_rate_limit_requests
+    app.state.rate_limit_window_seconds = resolved_rate_limit_window
     static_dir = settings.root_dir / "app" / "static"
     app.mount("/static", StaticFiles(directory=static_dir), name="static")
+
+    @app.middleware("http")
+    async def add_runtime_guards(request: Request, call_next):
+        request_id, actor = build_request_context(request)
+        limiter_result = app.state.rate_limiter.check(actor)
+        if not limiter_result.allowed:
+            response = rate_limit_response(request_id, limiter_result.retry_after_seconds or 1)
+            log_request(request.method, request.url.path, response.status_code, 0.0, request_id, actor)
+            return response
+
+        started_at = perf_counter()
+        response = await call_next(request)
+        duration_ms = (perf_counter() - started_at) * 1000
+        response.headers["X-Request-ID"] = request_id
+        log_request(request.method, request.url.path, response.status_code, duration_ms, request_id, actor)
+        return response
 
     def require_auth(
         db: Annotated[Session, Depends(get_db)],
         x_api_key: Annotated[str | None, Header(alias="X-API-Key")] = None,
+        authorization: Annotated[str | None, Header(alias="Authorization")] = None,
     ):
-        if not x_api_key:
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="missing api key")
-        auth = service.authenticate(db, x_api_key)
+        auth = None
+        if x_api_key:
+            auth = service.authenticate(db, x_api_key)
+        elif authorization and authorization.startswith("Bearer "):
+            auth = service.authenticate_session(db, authorization.removeprefix("Bearer ").strip())
         if auth is None:
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid api key")
+            detail = "missing credentials" if not x_api_key and not authorization else "invalid credentials"
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=detail)
         return auth
+
+    def require_api_key_admin(
+        auth=Depends(require_auth),
+    ):
+        if auth.auth_type != "api_key" or auth.role != "admin":
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="admin api key required")
+        if auth is None:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid credentials")
+        return auth
+
+    def require_role(*allowed_roles: str):
+        def dependency(auth=Depends(require_auth)):
+            if auth.role not in allowed_roles:
+                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="insufficient role")
+            return auth
+
+        return dependency
 
     @app.get("/health")
     def health() -> ServiceInfoResponse:
         return ServiceInfoResponse(
-            service="agent-identity-saas",
-            version="0.2.0",
-            database_url_scheme=settings.database_url.split(":", 1)[0],
+            service=settings.service_name,
+            version=settings.app_version,
+            database_url_scheme=engine.url.drivername,
+            schema_revision=app.state.schema_revision,
+            rate_limit_requests=app.state.rate_limit_requests,
+            rate_limit_window_seconds=app.state.rate_limit_window_seconds,
         )
 
     @app.get("/", include_in_schema=False)
@@ -94,14 +162,183 @@ def create_app(database_url: str | None = None) -> FastAPI:
     @app.get("/v1/organizations", response_model=list[OrganizationResponse])
     def list_organizations(
         db: Annotated[Session, Depends(get_db)],
-        auth=Depends(require_auth),
+        auth=Depends(require_role("admin", "writer", "reader")),
     ):
         return service.list_organizations(db, auth.organization_id)
+
+    @app.get("/v1/identity-providers", response_model=list[IdentityProviderConfigResponse])
+    def list_identity_providers(
+        db: Annotated[Session, Depends(get_db)],
+        auth=Depends(require_role("admin", "writer", "reader")),
+    ):
+        providers = service.list_identity_providers(db, auth.organization_id)
+        return [
+            IdentityProviderConfigResponse(
+                id=provider.id,
+                provider_type=provider.provider_type,
+                enabled=provider.enabled,
+                display_name=provider.display_name,
+                issuer=provider.issuer,
+                entity_id=provider.entity_id,
+                login_url=provider.login_url,
+                callback_url=provider.callback_url,
+                client_id=provider.client_id,
+                metadata=provider.metadata_json,
+                default_role=provider.default_role,
+                created_at=provider.created_at,
+                updated_at=provider.updated_at,
+            )
+            for provider in providers
+        ]
+
+    @app.post("/v1/identity-providers/oidc", response_model=IdentityProviderConfigResponse, status_code=201)
+    def upsert_oidc_provider(
+        payload: IdentityProviderConfigRequest,
+        db: Annotated[Session, Depends(get_db)],
+        auth=Depends(require_api_key_admin),
+    ):
+        provider = service.upsert_identity_provider(
+            db,
+            organization_id=auth.organization_id,
+            actor_label=auth.actor_label,
+            provider_type="oidc",
+            payload=payload.model_dump(),
+        )
+        return IdentityProviderConfigResponse(
+            id=provider.id,
+            provider_type=provider.provider_type,
+            enabled=provider.enabled,
+            display_name=provider.display_name,
+            issuer=provider.issuer,
+            entity_id=provider.entity_id,
+            login_url=provider.login_url,
+            callback_url=provider.callback_url,
+            client_id=provider.client_id,
+            metadata=provider.metadata_json,
+            default_role=provider.default_role,
+            created_at=provider.created_at,
+            updated_at=provider.updated_at,
+        )
+
+    @app.post("/v1/identity-providers/saml", response_model=IdentityProviderConfigResponse, status_code=201)
+    def upsert_saml_provider(
+        payload: IdentityProviderConfigRequest,
+        db: Annotated[Session, Depends(get_db)],
+        auth=Depends(require_api_key_admin),
+    ):
+        provider = service.upsert_identity_provider(
+            db,
+            organization_id=auth.organization_id,
+            actor_label=auth.actor_label,
+            provider_type="saml",
+            payload=payload.model_dump(),
+        )
+        return IdentityProviderConfigResponse(
+            id=provider.id,
+            provider_type=provider.provider_type,
+            enabled=provider.enabled,
+            display_name=provider.display_name,
+            issuer=provider.issuer,
+            entity_id=provider.entity_id,
+            login_url=provider.login_url,
+            callback_url=provider.callback_url,
+            client_id=provider.client_id,
+            metadata=provider.metadata_json,
+            default_role=provider.default_role,
+            created_at=provider.created_at,
+            updated_at=provider.updated_at,
+        )
+
+    @app.get("/v1/sso/oidc/start/{organization_slug}", response_model=OidcStartResponse)
+    def start_oidc_sign_in(
+        organization_slug: str,
+        db: Annotated[Session, Depends(get_db)],
+    ):
+        organization = service.get_organization_by_slug(db, organization_slug)
+        if organization is None:
+            raise HTTPException(status_code=404, detail="organization not found")
+        provider = service.get_identity_provider(db, organization.id, "oidc")
+        if provider is None:
+            raise HTTPException(status_code=404, detail="oidc provider not configured")
+        return OidcStartResponse(
+            organization_slug=organization.slug,
+            authorization_url=service.build_oidc_authorization_url(organization, provider),
+        )
+
+    @app.post("/v1/sso/oidc/callback/{organization_slug}", response_model=SessionAuthResponse)
+    def oidc_callback(
+        organization_slug: str,
+        payload: OidcCallbackRequest,
+        db: Annotated[Session, Depends(get_db)],
+    ):
+        organization = service.get_organization_by_slug(db, organization_slug)
+        if organization is None:
+            raise HTTPException(status_code=404, detail="organization not found")
+        provider = service.get_identity_provider(db, organization.id, "oidc")
+        if provider is None:
+            raise HTTPException(status_code=404, detail="oidc provider not configured")
+        session, token = service.create_oidc_session(
+            db,
+            organization=organization,
+            provider=provider,
+            actor_label="oidc-callback",
+            subject=payload.subject,
+            email=payload.email,
+            display_name=payload.display_name,
+            role=payload.role,
+            claims=payload.claims,
+        )
+        return SessionAuthResponse(
+            access_token=token,
+            expires_at=session.expires_at,
+            organization_id=organization.id,
+            organization_slug=organization.slug,
+            subject=session.subject,
+            email=session.email,
+            display_name=session.display_name,
+            role=session.role,
+            provider_type=session.provider_type,
+        )
+
+    @app.post("/v1/sso/saml/acs/{organization_slug}", response_model=SessionAuthResponse)
+    def saml_acs(
+        organization_slug: str,
+        payload: SamlAssertionRequest,
+        db: Annotated[Session, Depends(get_db)],
+    ):
+        organization = service.get_organization_by_slug(db, organization_slug)
+        if organization is None:
+            raise HTTPException(status_code=404, detail="organization not found")
+        provider = service.get_identity_provider(db, organization.id, "saml")
+        if provider is None:
+            raise HTTPException(status_code=404, detail="saml provider not configured")
+        try:
+            session, token = service.create_saml_session(
+                db,
+                organization=organization,
+                provider=provider,
+                actor_label="saml-acs",
+                saml_response=payload.saml_response,
+                role=payload.role,
+            )
+        except ProtocolValidationError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        return SessionAuthResponse(
+            access_token=token,
+            expires_at=session.expires_at,
+            organization_id=organization.id,
+            organization_slug=organization.slug,
+            subject=session.subject,
+            email=session.email,
+            display_name=session.display_name,
+            role=session.role,
+            provider_type=session.provider_type,
+        )
 
     @app.get("/v1/api-keys", response_model=list[ApiKeySummary])
     def list_api_keys(
         db: Annotated[Session, Depends(get_db)],
-        auth=Depends(require_auth),
+        auth=Depends(require_api_key_admin),
     ):
         return [
             ApiKeySummary(
@@ -109,16 +346,58 @@ def create_app(database_url: str | None = None) -> FastAPI:
                 label=item.label,
                 key_prefix=item.key_prefix,
                 last_four=item.last_four,
+                role=item.role,
                 is_active=item.is_active,
                 created_at=item.created_at,
+                revoked_at=item.revoked_at,
+                last_used_at=item.last_used_at,
             )
             for item in service.list_api_keys(db, auth.organization_id)
         ]
 
+    @app.post("/v1/api-keys", response_model=ApiKeyCreateResponse, status_code=201)
+    def create_api_key(
+        payload: ApiKeyCreateRequest,
+        db: Annotated[Session, Depends(get_db)],
+        auth=Depends(require_api_key_admin),
+    ):
+        api_key, raw_key = service.create_api_key(
+            db,
+            organization_id=auth.organization_id,
+            actor_label=auth.actor_label,
+            label=payload.label,
+            role=payload.role,
+        )
+        return ApiKeyCreateResponse(
+            id=api_key.id,
+            label=api_key.label,
+            role=api_key.role,
+            api_key=raw_key,
+            key_prefix=api_key.key_prefix,
+            last_four=api_key.last_four,
+            created_at=api_key.created_at,
+        )
+
+    @app.post("/v1/api-keys/{api_key_id}/revoke", response_model=ApiKeyRevokeResponse)
+    def revoke_api_key(
+        api_key_id: str,
+        db: Annotated[Session, Depends(get_db)],
+        auth=Depends(require_api_key_admin),
+    ):
+        api_key = service.revoke_api_key(
+            db,
+            organization_id=auth.organization_id,
+            actor_label=auth.actor_label,
+            api_key_id=api_key_id,
+        )
+        if api_key is None:
+            raise HTTPException(status_code=404, detail="api key not found")
+        return ApiKeyRevokeResponse(id=api_key.id, is_active=api_key.is_active, revoked_at=api_key.revoked_at)
+
     @app.get("/v1/agent-records", response_model=list[AgentRecordResponse])
     def list_agent_records(
         db: Annotated[Session, Depends(get_db)],
-        auth=Depends(require_auth),
+        auth=Depends(require_role("admin", "writer", "reader")),
     ):
         return [_record_response(record) for record in service.list_records(db, auth.organization_id)]
 
@@ -126,7 +405,7 @@ def create_app(database_url: str | None = None) -> FastAPI:
     def upsert_agent_record(
         payload: AgentRecordWrite,
         db: Annotated[Session, Depends(get_db)],
-        auth=Depends(require_auth),
+        auth=Depends(require_role("admin", "writer")),
     ):
         try:
             record = service.upsert_record(db, auth.organization_id, auth.actor_label, payload)
@@ -138,28 +417,36 @@ def create_app(database_url: str | None = None) -> FastAPI:
     def get_agent_record(
         record_id: str,
         db: Annotated[Session, Depends(get_db)],
-        auth=Depends(require_auth),
+        auth=Depends(require_role("admin", "writer", "reader")),
     ):
         record = service.get_record_by_id(db, auth.organization_id, record_id)
         if record is None:
             raise HTTPException(status_code=404, detail="agent record not found")
+        try:
+            service.ensure_record_permission(db, auth, record, "read")
+        except AuthorizationError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
         return _record_response(record)
 
     @app.get("/v1/agent-records/by-did/{did:path}", response_model=AgentRecordResponse)
     def get_agent_record_by_did(
         did: str,
         db: Annotated[Session, Depends(get_db)],
-        auth=Depends(require_auth),
+        auth=Depends(require_role("admin", "writer", "reader")),
     ):
         record = service.get_record_by_did(db, auth.organization_id, did)
         if record is None:
             raise HTTPException(status_code=404, detail="agent record not found")
+        try:
+            service.ensure_record_permission(db, auth, record, "read")
+        except AuthorizationError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
         return _record_response(record)
 
     @app.get("/v1/audit-events", response_model=list[AuditEventResponse])
     def list_audit_events(
         db: Annotated[Session, Depends(get_db)],
-        auth=Depends(require_auth),
+        auth=Depends(require_role("admin", "writer", "reader")),
         agent_record_id: str | None = None,
     ):
         events = service.list_audit_events(db, auth.organization_id, agent_record_id=agent_record_id)
@@ -180,8 +467,15 @@ def create_app(database_url: str | None = None) -> FastAPI:
         record_id: str,
         payload: DeprovisionRequest,
         db: Annotated[Session, Depends(get_db)],
-        auth=Depends(require_auth),
+        auth=Depends(require_role("admin", "writer", "reader")),
     ):
+        current = service.get_record_by_id(db, auth.organization_id, record_id)
+        if current is None:
+            raise HTTPException(status_code=404, detail="agent record not found")
+        try:
+            service.ensure_record_permission(db, auth, current, "deprovision")
+        except AuthorizationError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
         record = service.deprovision_record(
             db,
             auth.organization_id,
@@ -189,9 +483,72 @@ def create_app(database_url: str | None = None) -> FastAPI:
             record_id=record_id,
             reason=payload.reason,
         )
-        if record is None:
-            raise HTTPException(status_code=404, detail="agent record not found")
         return _record_response(record)
+
+    @app.get("/v1/fga/tuples", response_model=list[AuthorizationTupleResponse])
+    def list_fga_tuples(
+        db: Annotated[Session, Depends(get_db)],
+        auth=Depends(require_role("admin", "writer", "reader")),
+        object_type: str | None = None,
+        object_id: str | None = None,
+    ):
+        tuples = service.list_authorization_tuples(
+            db,
+            organization_id=auth.organization_id,
+            object_type=object_type,
+            object_id=object_id,
+        )
+        return [
+            AuthorizationTupleResponse(
+                id=item.id,
+                subject=item.subject,
+                relation=item.relation,
+                object_type=item.object_type,
+                object_id=item.object_id,
+                created_at=item.created_at,
+            )
+            for item in tuples
+        ]
+
+    @app.post("/v1/fga/tuples", response_model=AuthorizationTupleResponse, status_code=201)
+    def create_fga_tuple(
+        payload: AuthorizationTupleWrite,
+        db: Annotated[Session, Depends(get_db)],
+        auth=Depends(require_role("admin")),
+    ):
+        auth_tuple = service.create_authorization_tuple(
+            db,
+            organization_id=auth.organization_id,
+            actor_label=auth.actor_label,
+            subject=payload.subject,
+            relation=payload.relation,
+            object_type=payload.object_type,
+            object_id=payload.object_id,
+        )
+        return AuthorizationTupleResponse(
+            id=auth_tuple.id,
+            subject=auth_tuple.subject,
+            relation=auth_tuple.relation,
+            object_type=auth_tuple.object_type,
+            object_id=auth_tuple.object_id,
+            created_at=auth_tuple.created_at,
+        )
+
+    @app.post("/v1/fga/check", response_model=AuthorizationCheckResponse)
+    def check_fga_tuple(
+        payload: AuthorizationCheckRequest,
+        db: Annotated[Session, Depends(get_db)],
+        auth=Depends(require_role("admin", "writer", "reader")),
+    ):
+        allowed = service.check_authorization_tuple(
+            db,
+            organization_id=auth.organization_id,
+            subject=payload.subject,
+            relation=payload.relation,
+            object_type=payload.object_type,
+            object_id=payload.object_id,
+        )
+        return AuthorizationCheckResponse(allowed=allowed)
 
     return app
 

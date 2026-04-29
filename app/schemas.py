@@ -27,13 +27,134 @@ class OrganizationResponse(BaseModel):
     created_at: datetime
 
 
+class IdentityProviderConfigRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    display_name: str = Field(min_length=2, max_length=255)
+    issuer: str | None = Field(default=None, min_length=3, max_length=512)
+    entity_id: str | None = Field(default=None, min_length=3, max_length=512)
+    login_url: str | None = Field(default=None, min_length=3, max_length=1024)
+    callback_url: str | None = Field(default=None, min_length=3, max_length=1024)
+    client_id: str | None = Field(default=None, min_length=2, max_length=255)
+    client_secret: str | None = Field(default=None, min_length=2, max_length=4096)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    default_role: str = Field(default="reader", pattern=r"^(admin|writer|reader)$")
+
+
+class IdentityProviderConfigResponse(BaseModel):
+    id: str
+    provider_type: str
+    enabled: bool
+    display_name: str
+    issuer: str | None
+    entity_id: str | None
+    login_url: str | None
+    callback_url: str | None
+    client_id: str | None
+    metadata: dict[str, Any]
+    default_role: str
+    created_at: datetime
+    updated_at: datetime
+
+
+class OidcStartResponse(BaseModel):
+    organization_slug: str
+    authorization_url: str
+
+
+class OidcCallbackRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    subject: str = Field(min_length=2, max_length=255)
+    email: str | None = Field(default=None, max_length=255)
+    display_name: str | None = Field(default=None, max_length=255)
+    role: str | None = Field(default=None, pattern=r"^(admin|writer|reader)$")
+    claims: dict[str, Any] = Field(default_factory=dict)
+
+
+class SamlAssertionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    saml_response: str = Field(min_length=10)
+    role: str | None = Field(default=None, pattern=r"^(admin|writer|reader)$")
+
+
+class SessionAuthResponse(BaseModel):
+    access_token: str
+    expires_at: datetime
+    organization_id: str
+    organization_slug: str
+    subject: str
+    email: str | None
+    display_name: str | None
+    role: str
+    provider_type: str
+
+
+class AuthorizationTupleWrite(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    subject: str = Field(min_length=2, max_length=255)
+    relation: str = Field(pattern=r"^(viewer|editor|owner)$")
+    object_type: str = Field(pattern=r"^(agent_record)$")
+    object_id: str = Field(min_length=1, max_length=255)
+
+
+class AuthorizationTupleResponse(BaseModel):
+    id: str
+    subject: str
+    relation: str
+    object_type: str
+    object_id: str
+    created_at: datetime
+
+
+class AuthorizationCheckRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    subject: str = Field(min_length=2, max_length=255)
+    relation: str = Field(pattern=r"^(viewer|editor|owner)$")
+    object_type: str = Field(pattern=r"^(agent_record)$")
+    object_id: str = Field(min_length=1, max_length=255)
+
+
+class AuthorizationCheckResponse(BaseModel):
+    allowed: bool
+
+
 class ApiKeySummary(BaseModel):
     id: str
     label: str
     key_prefix: str
     last_four: str
+    role: str
     is_active: bool
     created_at: datetime
+    revoked_at: datetime | None
+    last_used_at: datetime | None
+
+
+class ApiKeyCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    label: str = Field(min_length=2, max_length=255)
+    role: str = Field(pattern=r"^(admin|writer|reader)$")
+
+
+class ApiKeyCreateResponse(BaseModel):
+    id: str
+    label: str
+    role: str
+    api_key: str
+    key_prefix: str
+    last_four: str
+    created_at: datetime
+
+
+class ApiKeyRevokeResponse(BaseModel):
+    id: str
+    is_active: bool
+    revoked_at: datetime | None
 
 
 class AgentRecordWrite(BaseModel):
@@ -78,11 +199,19 @@ class DeprovisionRequest(BaseModel):
 
 class AuthContext(BaseModel):
     organization_id: str
-    api_key_id: str
+    organization_slug: str
+    api_key_id: str | None = None
+    session_id: str | None = None
+    subject: str | None = None
     actor_label: str
+    role: str
+    auth_type: str
 
 
 class ServiceInfoResponse(BaseModel):
     service: str
     version: str
     database_url_scheme: str
+    schema_revision: str
+    rate_limit_requests: int
+    rate_limit_window_seconds: int

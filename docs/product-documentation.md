@@ -16,6 +16,8 @@ The current implementation is a single FastAPI service with:
 - schema validation against the Agent ID record JSON Schema
 - SQLite for local development
 - Postgres support through `DATABASE_URL`
+- startup schema migration tracking
+- in-memory API rate limiting and request ID logging
 
 ## Features
 
@@ -23,11 +25,16 @@ The current implementation is a single FastAPI service with:
 
 - Organization bootstrap for the first tenant
 - API key based access control using `X-API-Key`
+- Role-based API keys for `admin`, `writer`, and `reader`
+- OIDC provider configuration and bearer session issuance
+- SAML provider configuration and assertion-consumer session issuance
+- fine-grained authorization tuple storage for record-level sharing
 - Tenant-scoped Agent ID record storage
 - Record lookup by internal record ID or DID
 - Upsert semantics for Agent ID records
 - Deprovision workflow that changes agent status to `disabled`
 - Audit logging for bootstrap, record create/update, and deprovision actions
+- API key creation and revocation lifecycle endpoints
 - Admin console UI for bootstrap, session entry, record submission, audit viewing, and deprovisioning
 
 ### Protocol features
@@ -46,12 +53,20 @@ The current service uses the following tables:
 - `api_keys`
 - `agent_records`
 - `audit_events`
+- `identity_provider_configs`
+- `user_sessions`
+- `authorization_tuples`
+- `schema_migrations`
 
 Important current behavior:
 - only one bootstrap operation is allowed; after the first organization exists, `/v1/bootstrap` returns `409`
 - API keys are stored by SHA-256 hash, not in plaintext
+- API keys are assigned one of three roles: `admin`, `writer`, `reader`
+- SSO sessions are signed locally and mapped to organization-scoped user sessions
+- FGA tuples model `viewer`, `editor`, and `owner` relations on `agent_record` objects
 - Agent ID records are stored as full JSON payloads in `record_json`
 - agent uniqueness is enforced per tenant on `(organization_id, did)`
+- database migrations are applied at service startup and tracked in `schema_migrations`
 
 ### Admin UI
 
@@ -82,6 +97,10 @@ Current runtime environment variables:
 | `PORT` | HTTP port used by the container start script | `8000` |
 | `APP_PORT` | Host-side app port for `docker compose` | `8000` |
 | `POSTGRES_PORT` | Host-side Postgres port for `docker compose` | `5432` |
+| `API_RATE_LIMIT_REQUESTS` | Maximum requests per rate-limit window | `120` |
+| `API_RATE_LIMIT_WINDOW_SECONDS` | Rate-limit window duration in seconds | `60` |
+| `SESSION_SIGNING_SECRET` | HMAC secret for bearer session tokens | `agent-identity-dev-secret` |
+| `SESSION_TTL_SECONDS` | Bearer session lifetime in seconds | `43200` |
 
 ### Default settings
 
@@ -91,12 +110,17 @@ Current defaults in the application:
 |---|---|
 | Service name from `/health` | `agent-identity-saas` |
 | API version | `0.2.0` |
+| Product service version | `0.3.0` |
 | Local database engine | SQLite |
 | Compose database engine | Postgres 16 Alpine |
 | API key header | `X-API-Key` |
+| Session bearer header | `Authorization: Bearer <token>` |
 | Bootstrap default API key label | `bootstrap-admin` |
+| API key roles | `admin`, `writer`, `reader` |
+| FGA relations | `viewer`, `editor`, `owner` |
 | Organization slug validation | lowercase alphanumeric plus hyphen |
 | Deprovision status target | `disabled` |
+| Schema migration revision | `20260429_02` |
 
 ### Local development defaults
 
@@ -173,10 +197,16 @@ Because this is a FastAPI service, the default OpenAPI endpoints are available:
 
 ### Authentication
 
-All tenant-scoped endpoints require:
+Tenant-scoped endpoints accept either:
 
 ```http
 X-API-Key: <raw-api-key>
+```
+
+or
+
+```http
+Authorization: Bearer <signed-session-token>
 ```
 
 Unauthenticated endpoints:
@@ -186,13 +216,30 @@ Unauthenticated endpoints:
 
 Authenticated endpoints:
 - `GET /v1/organizations`
+- `GET /v1/identity-providers`
+- `POST /v1/identity-providers/oidc`
+- `POST /v1/identity-providers/saml`
 - `GET /v1/api-keys`
+- `POST /v1/api-keys`
+- `POST /v1/api-keys/{api_key_id}/revoke`
 - `GET /v1/agent-records`
 - `POST /v1/agent-records`
 - `GET /v1/agent-records/{record_id}`
 - `GET /v1/agent-records/by-did/{did}`
 - `GET /v1/audit-events`
 - `POST /v1/agent-records/{record_id}/deprovision`
+- `GET /v1/fga/tuples`
+- `POST /v1/fga/tuples`
+- `POST /v1/fga/check`
+
+Role matrix:
+- `admin`: full tenant access including API key issuance, revocation, provider configuration, record writes, and deprovision
+- `writer`: read access plus record create/update
+- `reader`: read-only access to organizations, records, and audit events
+
+FGA enforcement notes:
+- session-based `reader` users need an explicit `viewer` or stronger tuple to open individual agent record detail endpoints
+- `owner` tuples can authorize deprovision when the user would not otherwise have tenant-wide admin rights
 
 ### `GET /health`
 
@@ -204,8 +251,11 @@ Response:
 ```json
 {
   "service": "agent-identity-saas",
-  "version": "0.2.0",
-  "database_url_scheme": "sqlite"
+  "version": "0.3.0",
+  "database_url_scheme": "sqlite",
+  "schema_revision": "20260429_02",
+  "rate_limit_requests": 120,
+  "rate_limit_window_seconds": 60
 }
 ```
 
@@ -265,6 +315,9 @@ Response:
 Purpose:
 - list API keys for the authenticated organization
 
+Role required:
+- `admin`
+
 Response:
 
 ```json
@@ -274,10 +327,62 @@ Response:
     "label": "ops-admin",
     "key_prefix": "aidp_xxxxxxxx",
     "last_four": "ABCD",
+    "role": "admin",
     "is_active": true,
-    "created_at": "2026-04-29T13:00:00Z"
+    "created_at": "2026-04-29T13:00:00Z",
+    "revoked_at": null,
+    "last_used_at": "2026-04-29T13:05:00Z"
   }
 ]
+```
+
+### `POST /v1/api-keys`
+
+Purpose:
+- create a new tenant-scoped API key and return the raw secret once
+
+Role required:
+- `admin`
+
+Request body:
+
+```json
+{
+  "label": "writer-bot",
+  "role": "writer"
+}
+```
+
+Success response:
+
+```json
+{
+  "id": "uuid",
+  "label": "writer-bot",
+  "role": "writer",
+  "api_key": "aidp_...",
+  "key_prefix": "aidp_xxxxxxxx",
+  "last_four": "ABCD",
+  "created_at": "2026-04-29T13:00:00Z"
+}
+```
+
+### `POST /v1/api-keys/{api_key_id}/revoke`
+
+Purpose:
+- revoke an API key so it can no longer authenticate
+
+Role required:
+- `admin`
+
+Success response:
+
+```json
+{
+  "id": "uuid",
+  "is_active": false,
+  "revoked_at": "2026-04-29T13:15:00Z"
+}
 ```
 
 ### `GET /v1/agent-records`

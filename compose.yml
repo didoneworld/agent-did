@@ -8,6 +8,10 @@ services:
     environment:
       DATABASE_URL: postgresql+psycopg2://agentid:agentid@db:5432/agentid
       PORT: 8000
+      API_RATE_LIMIT_REQUESTS: ${API_RATE_LIMIT_REQUESTS:-120}
+      API_RATE_LIMIT_WINDOW_SECONDS: ${API_RATE_LIMIT_WINDOW_SECONDS:-60}
+      SESSION_SIGNING_SECRET: ${SESSION_SIGNING_SECRET:-agent-identity-dev-secret}
+      SESSION_TTL_SECONDS: ${SESSION_TTL_SECONDS:-43200}
     depends_on:
       db:
         condition: service_healthy

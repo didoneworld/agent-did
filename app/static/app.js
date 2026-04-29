@@ -128,7 +128,12 @@ function renderApiKeys() {
   state.apiKeys.forEach((item) => {
     const node = document.createElement("div");
     node.className = "mini-card";
-    node.innerHTML = `<strong>${item.label}</strong><div class="audit-meta">${item.key_prefix}...${item.last_four}</div>`;
+    const status = item.is_active ? "active" : "revoked";
+    node.innerHTML = `
+      <strong>${item.label}</strong>
+      <div class="audit-meta">${item.role} · ${status}</div>
+      <div class="audit-meta">${item.key_prefix}...${item.last_four}</div>
+    `;
     els.apiKeysList.appendChild(node);
   });
 }
