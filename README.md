@@ -56,7 +56,21 @@ Current product slice:
 ## Published Images
 
 - Docker Hub: `autonomyx/agent-identity:latest`
-- GHCR: `ghcr.io/didoneworld/agent-id-protocol:latest`
+- GHCR: `ghcr.io/didoneworld/agent-identity:latest`
+
+## CI/CD
+
+GitHub Actions is configured to:
+- run tests on every pull request
+- build and smoke test the container on pull requests
+- publish `latest`, branch, tag, and SHA-based image tags on `main` pushes and `v*` tags
+- push to both `ghcr.io/didoneworld/agent-identity` and `autonomyx/agent-identity`
+
+Required GitHub repository secrets for Docker Hub publishing:
+- `DOCKERHUB_USERNAME`
+- `DOCKERHUB_TOKEN`
+
+GHCR publishing uses the workflow `GITHUB_TOKEN` with package write permission.
 
 Run locally:
 
