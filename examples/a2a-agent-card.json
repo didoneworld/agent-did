@@ -1,0 +1,22 @@
+{
+  "name": "ClaudeSpecialist",
+  "description": "Remote specialist agent exposed over an A2A-compliant endpoint.",
+  "url": "https://claude-agent.example.com/a2a",
+  "version": "0.1.0",
+  "capabilities": {
+    "streaming": true,
+    "pushNotifications": false
+  },
+  "skills": [
+    {
+      "id": "migration-analysis",
+      "name": "Migration Analysis",
+      "description": "Analyzes migration tasks delegated by a control plane."
+    }
+  ],
+  "identityBinding": {
+    "protocol": "agent-id",
+    "protocolVersion": "0.1.0",
+    "identityRef": "did:<method>:<method-specific-id>"
+  }
+}

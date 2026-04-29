@@ -1,0 +1,22 @@
+agent_id_protocol_version: "0.1.0"
+agent:
+  did: did:<method>:<method-specific-id>
+  display_name: <human-readable-name>
+  owner: <team-or-organization>
+  role: <primary-role>
+  environment: <lab|staging|prod>
+  version: <v1>
+  status: <active|disabled|quarantine>
+  trust_level: <internal|curated|external>
+  capabilities:
+    - <capability>
+bindings:
+  a2a:
+    endpoint_url: null
+    agent_card_name: null
+  acp:
+    endpoint_url: null
+  anp:
+    did: null
+    endpoint_url: null
+extensions: {}
