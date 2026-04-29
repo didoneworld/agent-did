@@ -1,0 +1,23 @@
+agent_id_protocol_version: "0.1.0"
+agent:
+  did: did:key:z6Mki3xVExampleLocalEphemeralAgentKey
+  display_name: Local Lab Agent
+  owner: didoneworld
+  role: local-ops
+  environment: lab
+  version: v1
+  status: active
+  trust_level: internal
+  capabilities:
+    - local-validation
+    - dry-run-analysis
+bindings:
+  a2a:
+    endpoint_url: null
+    agent_card_name: null
+  acp:
+    endpoint_url: null
+  anp:
+    did: did:key:z6Mki3xVExampleLocalEphemeralAgentKey
+    endpoint_url: null
+extensions: {}

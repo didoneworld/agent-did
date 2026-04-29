@@ -1,0 +1,23 @@
+agent_id_protocol_version: "0.1.0"
+agent:
+  did: did:web:agents.didone.world:microcloud:migration:aws-discovery
+  display_name: AWS Discovery Agent
+  owner: didoneworld
+  role: migration-discovery
+  environment: prod
+  version: v1
+  status: active
+  trust_level: internal
+  capabilities:
+    - aws-inventory
+    - migration-analysis
+bindings:
+  a2a:
+    endpoint_url: https://agents.didone.world/a2a/aws-discovery
+    agent_card_name: AwsDiscoveryAgent
+  acp:
+    endpoint_url: null
+  anp:
+    did: null
+    endpoint_url: null
+extensions: {}

@@ -17,3 +17,8 @@
 - A2A, ACP, and ANP bindings may evolve independently of the core DID-backed record.
 - Multiple bindings may coexist on one record.
 - Bindings may be omitted entirely.
+
+
+## Pinned Release Consumers
+
+Consumers should prefer pinning a released version such as `v0.1.0` when integrating the protocol in production systems.

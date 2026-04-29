@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/didoneworld/agent-id-protocol/releases/download/v0.1.0/agent-id-record.schema.json",
+  "title": "Agent ID Record",
+  "type": "object",
+  "required": ["agent_id_protocol_version", "agent", "bindings"],
+  "properties": {
+    "agent_id_protocol_version": {
+      "type": "string",
+      "const": "0.1.0"
+    },
+    "agent": {
+      "type": "object",
+      "required": ["did", "display_name", "owner", "role", "environment", "version", "status", "trust_level", "capabilities"],
+      "properties": {
+        "did": {
+          "type": "string",
+          "pattern": "^did:[a-z0-9]+:.+$"
+        },
+        "display_name": {"type": "string"},
+        "owner": {"type": "string"},
+        "role": {"type": "string"},
+        "environment": {"type": "string"},
+        "version": {"type": "string"},
+        "status": {
+          "type": "string",
+          "enum": ["active", "disabled", "quarantine"]
+        },
+        "trust_level": {
+          "type": "string",
+          "enum": ["internal", "curated", "external"]
+        },
+        "capabilities": {
+          "type": "array",
+          "items": {"type": "string"}
+        }
+      },
+      "additionalProperties": false
+    },
+    "bindings": {
+      "type": "object",
+      "properties": {
+        "a2a": {
+          "type": "object",
+          "properties": {
+            "endpoint_url": {"type": ["string", "null"], "format": "uri"},
+            "agent_card_name": {"type": ["string", "null"]}
+          },
+          "required": ["endpoint_url", "agent_card_name"],
+          "additionalProperties": false
+        },
+        "acp": {
+          "type": "object",
+          "properties": {
+            "endpoint_url": {"type": ["string", "null"], "format": "uri"}
+          },
+          "required": ["endpoint_url"],
+          "additionalProperties": false
+        },
+        "anp": {
+          "type": "object",
+          "properties": {
+            "did": {"type": ["string", "null"], "pattern": "^did:[a-z0-9]+:.+$"},
+            "endpoint_url": {"type": ["string", "null"], "format": "uri"}
+          },
+          "required": ["did", "endpoint_url"],
+          "additionalProperties": false
+        }
+      },
+      "required": ["a2a", "acp", "anp"],
+      "additionalProperties": false
+    },
+    "extensions": {
+      "type": "object"
+    }
+  },
+  "additionalProperties": false
+}

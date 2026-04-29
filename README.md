@@ -17,6 +17,7 @@ This repository does not define agent messaging. It is intended to work alongsid
 - `docs/agent-id-spec.md`: protocol draft
 - `docs/compatibility.md`: evolution and compatibility rules
 - `schemas/agent-id-record.yaml`: core record example
+- `schemas/json/agent-id-record.schema.json`: JSON Schema for validation
 - `examples/a2a-agent-card.json`: A2A binding example
 - `templates/publish-checklist.md`: publication checklist
 
@@ -28,3 +29,8 @@ The protocol uses W3C DID as the identity foundation.
 
 - `did:web` for public organization-managed agent identities
 - `did:key` for local, ephemeral, or lightweight agent identities
+
+## Example DID Methods
+
+- `examples/did-methods/did-web-agent.yaml` for organization-managed public identities
+- `examples/did-methods/did-key-agent.yaml` for local or ephemeral identities
