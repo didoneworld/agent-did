@@ -19,6 +19,12 @@ class Settings:
         self.session_signing_secret = os.getenv("SESSION_SIGNING_SECRET", "agent-identity-dev-secret")
         self.session_ttl_seconds = int(os.getenv("SESSION_TTL_SECONDS", "43200"))
         self.schema_path = ROOT_DIR / "schemas" / "json" / "agent-id-record.schema.json"
+        self.agent_auth_url = os.getenv("AGENT_AUTH_URL", "")
+        self.agent_auth_api_key = os.getenv("AGENT_AUTH_API_KEY", "")
+        self.agent_auth_timeout_seconds = float(os.getenv("AGENT_AUTH_TIMEOUT_SECONDS", "3.0"))
+        self.caas_api_gateway_url = os.getenv("CAAS_API_GATEWAY_URL", "")
+        self.caas_api_key = os.getenv("CAAS_API_KEY", "")
+        self.caas_timeout_seconds = float(os.getenv("CAAS_TIMEOUT_SECONDS", "3.0"))
 
 
 settings = Settings()
