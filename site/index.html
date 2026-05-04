@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Agent DID | Open Agent Identity Control Plane</title>
+    <meta
+      name="description"
+      content="Agent DID is an open source, vendor-agnostic identity and access management control plane for AI agents, built around OIDC, SAML, SCIM, Shared Signals, and W3C DIDs."
+    />
+    <meta property="og:title" content="Agent DID" />
+    <meta
+      property="og:description"
+      content="Open source identity, authorization, governance, and lifecycle control plane for AI agents."
+    />
+    <meta property="og:type" content="website" />
+    <meta name="theme-color" content="#111827" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="brand" href="./" aria-label="Agent DID home">
+        <span class="brand-mark">DID</span>
+        <span>Agent DID</span>
+      </a>
+      <nav class="nav" aria-label="Primary navigation">
+        <a href="#features">Features</a>
+        <a href="#quickstart">Quick start</a>
+        <a href="#docs">Docs</a>
+        <a class="nav-button" href="https://github.com/didoneworld/agent-did">GitHub</a>
+      </nav>
+    </header>
+
+    <main>
+      <section class="hero">
+        <div class="hero-copy">
+          <p class="eyebrow">Open agent identity infrastructure</p>
+          <h1>Identity, access, and governance for AI agents.</h1>
+          <p class="hero-text">
+            Agent DID is an open source, vendor-agnostic control plane for managing AI agent identities,
+            authorization metadata, lifecycle state, and enterprise identity integrations using OIDC,
+            SAML, SCIM, Shared Signals, and W3C Decentralized Identifiers.
+          </p>
+          <div class="hero-actions">
+            <a class="button primary" href="https://github.com/didoneworld/agent-did">View on GitHub</a>
+            <a class="button secondary" href="https://github.com/didoneworld/agent-did/blob/main/docs/how-to-guide.md">Read the guide</a>
+          </div>
+        </div>
+        <div class="hero-card" aria-label="Agent DID example command">
+          <div class="terminal-bar">
+            <span></span><span></span><span></span>
+          </div>
+          <pre><code>curl -X POST http://127.0.0.1:8000/v1/bootstrap \
+  -H 'content-type: application/json' \
+  -d '{
+    "organization_name": "Didone World",
+    "organization_slug": "didoneworld",
+    "api_key_label": "ops-admin"
+  }'</code></pre>
+        </div>
+      </section>
+
+      <section class="section" id="features">
+        <div class="section-heading">
+          <p class="eyebrow">What it provides</p>
+          <h2>A practical foundation for agent IAM.</h2>
+          <p>
+            Define trusted agent records, operate a tenant-scoped registry, and connect identity and
+            lifecycle controls to the systems enterprises already use.
+          </p>
+        </div>
+        <div class="grid three">
+          <article class="feature-card">
+            <h3>DID-backed agent records</h3>
+            <p>
+              Model each agent with a W3C DID, environment, trust level, capabilities, protocol bindings,
+              authorization metadata, and governance endpoints.
+            </p>
+          </article>
+          <article class="feature-card">
+            <h3>Enterprise identity hooks</h3>
+            <p>
+              Integrate OIDC, SAML, bearer sessions, SCIM lifecycle flows, and Shared Signals Framework
+              routes from a single FastAPI service.
+            </p>
+          </article>
+          <article class="feature-card">
+            <h3>Control plane operations</h3>
+            <p>
+              Bootstrap tenants, issue API keys, store agent records, inspect audit events, manage FGA
+              tuples, and deprovision agents.
+            </p>
+          </article>
+        </div>
+      </section>
+
+      <section class="section split" id="quickstart">
+        <div>
+          <p class="eyebrow">Quick start</p>
+          <h2>Run locally in minutes.</h2>
+          <p>
+            Start with Python for development, Docker for a packaged service, or Docker Compose for a
+            local app plus Postgres stack.
+          </p>
+        </div>
+        <div class="steps">
+          <div class="step">
+            <span>1</span>
+            <code>pip install -r requirements.txt</code>
+          </div>
+          <div class="step">
+            <span>2</span>
+            <code>python3 -m uvicorn app.main:app --reload</code>
+          </div>
+          <div class="step">
+            <span>3</span>
+            <code>open http://127.0.0.1:8000/docs</code>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="docs">
+        <div class="section-heading">
+          <p class="eyebrow">Documentation</p>
+          <h2>Build, integrate, and operate Agent DID.</h2>
+        </div>
+        <div class="grid four">
+          <a class="doc-card" href="https://github.com/didoneworld/agent-did/blob/main/docs/how-to-guide.md">
+            <h3>How-to guide</h3>
+            <p>Step-by-step local setup, bootstrap, records, identity providers, FGA, and deprovisioning.</p>
+          </a>
+          <a class="doc-card" href="https://github.com/didoneworld/agent-did/blob/main/docs/agent-id-spec.md">
+            <h3>Protocol spec</h3>
+            <p>Agent ID record structure, identity model, authorization metadata, and governance concepts.</p>
+          </a>
+          <a class="doc-card" href="https://github.com/didoneworld/agent-did/blob/main/docs/product-documentation.md">
+            <h3>Product docs</h3>
+            <p>Feature reference, configuration, runtime behavior, defaults, and HTTP API details.</p>
+          </a>
+          <a class="doc-card" href="https://github.com/didoneworld/agent-did/blob/main/docs/compatibility.md">
+            <h3>Compatibility</h3>
+            <p>Versioning, compatibility guidance, and evolution rules for Agent DID implementations.</p>
+          </a>
+        </div>
+      </section>
+
+      <section class="cta">
+        <p class="eyebrow">Open source</p>
+        <h2>Bring identity and governance to your agent fleet.</h2>
+        <p>
+          Use Agent DID as a protocol draft, a reference SaaS foundation, or a starting point for your
+          own enterprise agent identity platform.
+        </p>
+        <a class="button primary" href="https://github.com/didoneworld/agent-did">Star or fork the project</a>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <span>Agent DID</span>
+      <a href="https://github.com/didoneworld/agent-did">github.com/didoneworld/agent-did</a>
+    </footer>
+  </body>
+</html>
