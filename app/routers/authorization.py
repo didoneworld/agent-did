@@ -34,7 +34,13 @@ async def evaluate_authorization(
     decisions, and CAAS can consume the resulting decision for runtime enforcement.
     """
 
-    decision = await agent_auth.evaluate(payload)
+    raw_decision = await agent_auth.evaluate(payload)
+    # Normalise: evaluate() may return a typed response or a plain dict
+    if isinstance(raw_decision, dict):
+        raw_decision.setdefault("decision_id", raw_decision.get("decision_id", ""))
+        decision = AuthorizationEvaluationResponse.model_validate(raw_decision)
+    else:
+        decision = raw_decision
     await caas.forward_decision(
         CaaSDecisionForwardRequest(
             subject=payload.subject.model_dump(),
