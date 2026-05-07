@@ -573,14 +573,14 @@ def create_app(
         blueprint, affected = service.set_blueprint_status(db, auth.organization_id, auth.actor_label, blueprint_id, enabled=False)
         if blueprint is None:
             raise HTTPException(status_code=404, detail="blueprint not found")
-        return BlueprintPolicyActionResponse(blueprint_id=blueprint.blueprint_id, status=blueprint.status, affected_agent_record_ids=affected)
+        return BlueprintPolicyActionResponse(action="disable", blueprint_id=blueprint.blueprint_id, success=True, message=f"Disabled, affected {len(affected)} records")
 
     @app.post("/v1/blueprints/{blueprint_id}/enable", response_model=BlueprintPolicyActionResponse)
     def enable_blueprint(blueprint_id: str, db: Annotated[Session, Depends(get_db)], auth=Depends(require_role("admin", "writer"))):
         blueprint, affected = service.set_blueprint_status(db, auth.organization_id, auth.actor_label, blueprint_id, enabled=True)
         if blueprint is None:
             raise HTTPException(status_code=404, detail="blueprint not found")
-        return BlueprintPolicyActionResponse(blueprint_id=blueprint.blueprint_id, status=blueprint.status, affected_agent_record_ids=affected)
+        return BlueprintPolicyActionResponse(action="enable", blueprint_id=blueprint.blueprint_id, success=True, message=f"Enabled, affected {len(affected)} records")
 
     @app.get("/v1/blueprints/{blueprint_id}/agent-records", response_model=list[AgentRecordResponse])
     def list_blueprint_agent_records(blueprint_id: str, db: Annotated[Session, Depends(get_db)], auth=Depends(require_role("admin", "writer", "reader"))):
@@ -657,7 +657,7 @@ def create_app(
         for record in records:
             service.deprovision_record(db, auth.organization_id, auth.actor_label, record.id, "blueprint-level deprovision")
             affected.append(record.id)
-        return BlueprintPolicyActionResponse(blueprint_id=blueprint_id, status="deprovisioned", affected_agent_record_ids=affected)
+        return BlueprintPolicyActionResponse(action="deprovision_all", blueprint_id=blueprint_id, success=True, message=f"Deprovisioned {len(affected)} records")
 
     @app.post("/v1/blueprints/{blueprint_id}/quarantine-all", response_model=BlueprintPolicyActionResponse)
     def quarantine_blueprint_children(blueprint_id: str, db: Annotated[Session, Depends(get_db)], auth=Depends(require_role("admin", "writer"))):
@@ -668,7 +668,7 @@ def create_app(
         for record in records:
             record.status = "quarantined"; record.record_json.setdefault("agent", {})["status"] = "quarantined"; affected.append(record.id)
         db.commit()
-        return BlueprintPolicyActionResponse(blueprint_id=blueprint_id, status="quarantined", affected_agent_record_ids=affected)
+        return BlueprintPolicyActionResponse(action="quarantine_all", blueprint_id=blueprint_id, success=True, message=f"Quarantined {len(affected)} records")
 
     @app.get("/v1/blueprints/{blueprint_id}/export-child-inventory", response_model=BlueprintPolicyActionResponse)
     def export_blueprint_inventory(blueprint_id: str, db: Annotated[Session, Depends(get_db)], auth=Depends(require_role("admin", "writer", "reader"))):
