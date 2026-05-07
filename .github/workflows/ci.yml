@@ -38,7 +38,7 @@ jobs:
         
       - name: Smoke test
         run: |
-          docker run -d -p 8080:8080 --name test-agent agent-did
+          docker run -d -p 8080:8000 --name test-agent agent-did
           sleep 5
           curl -f http://localhost:8080/health || exit 1
           docker kill test-agent

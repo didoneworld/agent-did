@@ -206,10 +206,19 @@ def create_app(
     )
     app.state.service = service
     app.state.schema_revision = schema_revision
-    app.state.rate_limiter = InMemoryRateLimiter(
-        max_requests=resolved_rate_limit_requests,
-        window_seconds=resolved_rate_limit_window,
-    )
+    # Use Redis rate limiter in production when REDIS_URL is configured
+    if settings.redis_url and settings.env == "production":
+        from app.runtime import RedisRateLimiter
+        app.state.rate_limiter = RedisRateLimiter(
+            redis_url=settings.redis_url,
+            max_requests=resolved_rate_limit_requests,
+            window_seconds=resolved_rate_limit_window,
+        )
+    else:
+        app.state.rate_limiter = InMemoryRateLimiter(
+            max_requests=resolved_rate_limit_requests,
+            window_seconds=resolved_rate_limit_window,
+        )
     app.state.rate_limit_requests = resolved_rate_limit_requests
     app.state.rate_limit_window_seconds = resolved_rate_limit_window
     static_dir = settings.root_dir / "app" / "static"

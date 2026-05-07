@@ -33,6 +33,7 @@ class Settings:
         self.caas_api_key = os.getenv("CAAS_API_KEY", "")
         self.caas_timeout_seconds = float(os.getenv("CAAS_TIMEOUT_SECONDS", "3.0"))
         self.authzen_fail_open = os.getenv("AUTHZEN_FAIL_OPEN", "true").lower() == "true"
+        self.redis_url = os.getenv("REDIS_URL", "")
 
 
 settings = Settings()
