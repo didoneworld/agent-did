@@ -836,7 +836,7 @@ def create_app(
             except Exception:
                 detail = str(exc)
             raise HTTPException(status_code=422, detail=detail) from exc
-        return _make_lifecycle_response("agent", record_id, result)
+        return _transition_response("agent", record_id, result)
 
     @app.delete("/v1/agent-records/{record_id}", response_model=LifecycleTransitionResponse)
     def delete_agent_record_lifecycle(
@@ -848,7 +848,7 @@ def create_app(
             _record, result = service.transition_agent_lifecycle(db, auth.organization_id, auth.actor_label, record_id, "delete", LifecycleRequestData(reason="delete requested", force=True))
         except KeyError:
             raise HTTPException(status_code=404, detail="agent record not found")
-        return _make_lifecycle_response("agent", record_id, result)
+        return _transition_response("agent", record_id, result)
 
     def _make_lifecycle_response(blueprint: AgentIdentityBlueprint) -> BlueprintLifecycleResponse:
         return BlueprintLifecycleResponse(id=blueprint.id, organization_id=blueprint.organization_id, lifecycle_state=blueprint.lifecycle_state, metadata=blueprint.metadata_json, updated_at=blueprint.updated_at)
