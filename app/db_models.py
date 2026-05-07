@@ -189,6 +189,8 @@ class AgentIdentityBlueprint(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
 
+    organization: Mapped["Organization"] = relationship(back_populates="blueprints")
+    agent_records: Mapped[list["AgentRecord"]] = relationship(back_populates="blueprint", cascade="all, delete-orphan")
 
 class LifecycleAuditEvent(Base):
     __tablename__ = "lifecycle_audit_events"

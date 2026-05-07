@@ -527,7 +527,7 @@ class SaaSService(LifecycleServiceMixin):
             group_membership_claims_json=payload.group_membership_claims,
             token_encryption_key_id=payload.token_encryption_key_id,
             certification_json=payload.certification,
-            info_urls_json=payload.info_urls.model_dump(),
+            info_urls_json=payload.info_urls,
             tags_json=payload.tags,
             status=payload.status,
             extension_fields_json=payload.extension_fields,
@@ -536,7 +536,7 @@ class SaaSService(LifecycleServiceMixin):
         )
         db.add(blueprint)
         db.flush()
-        self._replace_permissions(db, organization_id, payload.blueprint_id, payload.permissions.model_dump())
+        self._replace_permissions(db, organization_id, payload.blueprint_id, payload.permissions)
         self._replace_people(db, organization_id, payload.blueprint_id, payload.owners, payload.sponsors)
         for credential in payload.credentials:
             self.add_blueprint_credential(db, organization_id, actor_label, payload.blueprint_id, credential, commit=False)
@@ -594,7 +594,7 @@ class SaaSService(LifecycleServiceMixin):
     def create_record_from_blueprint(self, db: Session, organization_id: str, actor_label: str, blueprint_id: str, payload: AgentRecordWrite) -> AgentRecord:
         if self.get_blueprint(db, organization_id, blueprint_id) is None:
             raise ProtocolValidationError("blueprint not found")
-        data = payload.model_dump()
+        data = payload.model_dump(mode="json")
         data["blueprint_id"] = blueprint_id
         data.setdefault("extensions", {})["blueprint_id"] = blueprint_id
         return self.upsert_record(db, organization_id, actor_label, AgentRecordWrite(**data))
@@ -719,7 +719,7 @@ class SaaSService(LifecycleServiceMixin):
         actor_label: str,
         payload: AgentRecordWrite,
     ) -> AgentRecord:
-        record = payload.model_dump()
+        record = payload.model_dump(mode="json")
         blueprint_id = record.get("blueprint_id") or record.get("agent", {}).get("blueprint_id") or record.get("extensions", {}).get("blueprint_id")
         if blueprint_id:
             blueprint = self.get_blueprint(db, organization_id, blueprint_id)
