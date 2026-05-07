@@ -17,3 +17,4 @@ python-multipart>=0.0.9
 
 # Phase 2 — SCIM lifecycle + SSF
 # (httpx already present)
+gunicorn[gevent]==23.0.0
